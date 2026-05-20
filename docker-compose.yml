@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tennis
+      POSTGRES_PASSWORD: tennis
+      POSTGRES_DB: tennis_edge
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tennis -d tennis_edge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://tennis:tennis@db:5432/tennis_edge
+      ENVIRONMENT: development
+      DEBUG: "true"
+      # Les clés API se mettent dans .env, jamais ici
+      API_SPORTS_KEY: ${API_SPORTS_KEY:-}
+      ODDS_API_KEY: ${ODDS_API_KEY:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app  # hot reload en dev
+
+volumes:
+  pgdata:
