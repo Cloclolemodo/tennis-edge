@@ -4,7 +4,7 @@ Tennis Edge API — entry point.
 Démarre l'application FastAPI et expose les routes.
 """
 from fastapi import FastAPI
-from app.api import health, players
+from app.api import health, players, matches
 from app.core.config import settings
 
 app = FastAPI(
@@ -16,6 +16,7 @@ app = FastAPI(
 # Routes
 app.include_router(health.router, tags=["health"])
 app.include_router(players.router, prefix="/players", tags=["players"])
+app.include_router(matches.router, prefix="/matches", tags=["matches"])
 
 
 @app.get("/")

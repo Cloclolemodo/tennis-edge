@@ -29,3 +29,57 @@ class PlayerRead(BaseModel):
     matches_played: int
     created_at: datetime
     updated_at: datetime
+
+
+# --- Schémas Match ---
+
+class MatchCreate(BaseModel):
+    """
+    Payload pour créer un match À VENIR.
+    On ne demande QUE les infos connues à l'avance.
+    Pas de gagnant, pas de score : le match n'est pas encore joué.
+    """
+    player1_id: int = Field(..., examples=[1])
+    player2_id: int = Field(..., examples=[2])
+    match_date: datetime = Field(..., examples=["2026-06-15T14:00:00Z"])
+    tournament: str = Field(..., min_length=2, max_length=120, examples=["Roland-Garros"])
+    surface: str = Field(..., pattern="^(clay|hard|grass)$", examples=["clay"])
+    external_id: int | None = None
+
+
+class MatchUpdate(BaseModel):
+    """
+    Payload pour ENREGISTRER LE RÉSULTAT d'un match déjà joué.
+    Tous les champs sont optionnels : on remplit ce qu'on a.
+    Mettre à jour un match le fait passer en statut "completed".
+    """
+    winner_id: int | None = None
+    score: str | None = Field(None, examples=["6-4 7-5"])
+    aces_p1: int | None = None
+    aces_p2: int | None = None
+    breaks_p1: int | None = None
+    breaks_p2: int | None = None
+    points_p1: int | None = None
+    points_p2: int | None = None
+
+
+class MatchRead(BaseModel):
+    """Réponse API pour un match : toutes les colonnes."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    player1_id: int
+    player2_id: int
+    winner_id: int | None
+    match_date: datetime
+    tournament: str
+    surface: str
+    status: str
+    score: str | None
+    aces_p1: int | None
+    aces_p2: int | None
+    breaks_p1: int | None
+    breaks_p2: int | None
+    points_p1: int | None
+    points_p2: int | None
+    created_at: datetime
