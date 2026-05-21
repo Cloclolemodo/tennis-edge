@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.schemas import MatchCreate, MatchUpdate, MatchRead
+from app.core.config import settings
 from app.db.models import Match, Player
 from app.db.session import get_db
+from app.services.elo import update_ratings
 
 router = APIRouter()
 
@@ -99,8 +101,37 @@ def update_match(match_id: int, payload: MatchUpdate, db: Session = Depends(get_
     for field, value in update_data.items():
         setattr(match, field, value)
 
+    # --- Mise à jour Elo ---
+    # On ne recalcule l'Elo QU'UNE FOIS : seulement si le match n'était pas
+    # déjà "completed" avant ce PATCH, et si un gagnant est bien renseigné.
+    # Sans ce garde-fou, refaire le PATCH ferait bouger les ratings plusieurs fois.
+    was_already_completed = match.status == "completed"
+
     # Enregistrer un résultat fait passer le match en "completed"
     match.status = "completed"
+
+    if not was_already_completed and match.winner_id is not None:
+        # --- Mise à jour des ratings Elo ---
+        # On identifie le perdant : c'est l'autre joueur du match.
+        loser_id = (
+            match.player2_id if match.winner_id == match.player1_id
+            else match.player1_id
+        )
+        winner = db.query(Player).filter(Player.id == match.winner_id).first()
+        loser = db.query(Player).filter(Player.id == loser_id).first()
+
+        # Le moteur Elo calcule les nouveaux ratings.
+        new_winner_elo, new_loser_elo = update_ratings(
+            rating_winner=winner.current_elo,
+            rating_loser=loser.current_elo,
+            k_factor=settings.elo_k_factor,
+        )
+
+        # On écrit les nouveaux ratings et on incrémente le compteur de matchs.
+        winner.current_elo = new_winner_elo
+        loser.current_elo = new_loser_elo
+        winner.matches_played += 1
+        loser.matches_played += 1
 
     db.commit()
     db.refresh(match)
