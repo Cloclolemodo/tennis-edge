@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.db.models import Match, Player
 from app.db.session import get_db
 from app.services.elo import update_ratings
+from app.sources.odds_api import fetch_tennis_odds, OddsAPIError
 
 router = APIRouter()
 
@@ -136,3 +137,27 @@ def update_match(match_id: int, payload: MatchUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(match)
     return match
+
+
+@router.get("/odds/live")
+def get_live_odds():
+    """
+    Récupère les cotes réelles des matchs de tennis à venir,
+    via The Odds API (bookmakers européens).
+
+    ATTENTION : chaque appel consomme 1 requête du quota mensuel (500/mois).
+
+    Si le service de cotes échoue, on renvoie une erreur 503 claire
+    ("service indisponible") plutôt qu'une fausse réponse.
+    """
+    try:
+        raw_odds = fetch_tennis_odds(regions="eu")
+    except OddsAPIError as exc:
+        # 503 = "Service Unavailable" : le code HTTP fait pour ce cas.
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    # On renvoie un résumé : nombre de matchs trouvés + les données brutes.
+    return {
+        "matches_found": len(raw_odds),
+        "odds": raw_odds,
+    }
