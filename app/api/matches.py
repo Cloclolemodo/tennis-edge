@@ -8,7 +8,9 @@ from app.api.schemas import MatchCreate, MatchUpdate, MatchRead
 from app.core.config import settings
 from app.db.models import Match, Player
 from app.db.session import get_db
-from app.services.elo import update_ratings
+from app.services.elo import update_ratings, win_probability
+from app.services.matching import find_player_by_name
+from app.services.value_bet import analyze_bet
 from app.sources.odds_api import fetch_tennis_odds, OddsAPIError
 
 router = APIRouter()
@@ -160,4 +162,91 @@ def get_live_odds():
     return {
         "matches_found": len(raw_odds),
         "odds": raw_odds,
+    }
+
+
+def _extract_h2h_odds(match: dict) -> dict | None:
+    """
+    Extrait, depuis un match The Odds API, la cote h2h de chaque joueur
+    chez le premier bookmaker disponible.
+
+    Renvoie {nom_joueur: cote, ...} ou None si aucune cote exploitable.
+    """
+    bookmakers = match.get("bookmakers", [])
+    if not bookmakers:
+        return None
+
+    # On prend le premier bookmaker, et son marché "h2h".
+    for market in bookmakers[0].get("markets", []):
+        if market.get("key") == "h2h":
+            outcomes = market.get("outcomes", [])
+            return {o["name"]: o["price"] for o in outcomes}
+    return None
+
+
+@router.get("/odds/analyze")
+def analyze_live_matches(db: Session = Depends(get_db)):
+    """
+    Analyse automatique des vrais matchs de tennis à venir.
+
+    Pour chaque match renvoyé par The Odds API :
+    - retrouve les deux joueurs dans notre base (matching par nom)
+    - si les deux existent : calcule l'analyse value bet
+    - sinon : marque le match "non analysable"
+
+    ATTENTION : consomme 1 requête du quota mensuel The Odds API.
+    """
+    try:
+        raw_matches = fetch_tennis_odds(regions="eu")
+    except OddsAPIError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    analyzed = []
+    skipped = []
+
+    for match in raw_matches:
+        home_name = match.get("home_team", "")
+        away_name = match.get("away_team", "")
+
+        # Matching : retrouve les joueurs dans notre base.
+        home_player = find_player_by_name(home_name, db)
+        away_player = find_player_by_name(away_name, db)
+
+        # Cas "non analysable" : un joueur manque -> on signale et on passe.
+        if home_player is None or away_player is None:
+            skipped.append({
+                "match": f"{home_name} vs {away_name}",
+                "reason": "joueur(s) absent(s) de la base",
+            })
+            continue
+
+        # Les cotes du bookmaker pour ce match.
+        odds = _extract_h2h_odds(match)
+        if not odds or home_name not in odds:
+            skipped.append({
+                "match": f"{home_name} vs {away_name}",
+                "reason": "cotes indisponibles",
+            })
+            continue
+
+        # Probabilité Elo pour le joueur "home", puis analyse value bet.
+        proba = win_probability(home_player.current_elo, away_player.current_elo)
+        analysis = analyze_bet(
+            probability=proba,
+            bookmaker_odds=odds[home_name],
+            min_edge=settings.value_bet_min_edge,
+            kelly_fraction=settings.kelly_fraction,
+        )
+
+        analyzed.append({
+            "match": f"{home_name} vs {away_name}",
+            "tournament": match.get("sport_title"),
+            "analysis": analysis,
+        })
+
+    return {
+        "analyzed_count": len(analyzed),
+        "skipped_count": len(skipped),
+        "analyzed": analyzed,
+        "skipped": skipped,
     }
