@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     api_sports_key: str = ""
     odds_api_key: str = ""
 
+    # Notifications Telegram (à remplir dans .env, jamais commiter)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
     # Paramètres métier
     elo_initial_rating: float = 1500.0
     elo_k_factor: float = 32.0
