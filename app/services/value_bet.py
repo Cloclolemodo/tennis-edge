@@ -86,3 +86,34 @@ def analyze_bet(
         "is_value_bet": is_value_bet,
         "recommended_stake_pct": round(stake * 100, 2),
     }
+
+
+def bet_payout(stake: float, odds: float, status: str) -> float:
+    """
+    Calcule ce qu'un pari rapporte, selon son statut.
+
+    - "won"  : on récupère mise × cote (ex : 20 € × 1.85 = 37 €)
+    - "lost" : on récupère 0 (la mise est perdue)
+    - "pending" : pari pas encore réglé, on renvoie 0 pour l'instant
+
+    Le gain n'est PAS stocké en base : il se recalcule ici à partir
+    de la mise, la cote et le statut (source de vérité unique).
+    """
+    if status == "won":
+        return stake * odds
+    return 0.0
+
+
+def bet_profit(stake: float, odds: float, status: str) -> float:
+    """
+    Le PROFIT net d'un pari (ce qu'on gagne ou perd vraiment).
+
+    - "won"  : profit = (mise × cote) - mise
+    - "lost" : profit = -mise (on a perdu la mise)
+    - "pending" : 0 (pas encore réglé)
+    """
+    if status == "won":
+        return stake * odds - stake
+    if status == "lost":
+        return -stake
+    return 0.0

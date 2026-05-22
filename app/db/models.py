@@ -98,3 +98,40 @@ class Match(Base):
 
     def __repr__(self) -> str:
         return f"<Match {self.player1_id} vs {self.player2_id} ({self.status})>"
+
+
+class Bet(Base):
+    __tablename__ = "bets"
+
+    # Clé primaire : identifiant unique de chaque pari.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # --- Sur quel match porte le pari : clé étrangère vers matches ---
+    match_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("matches.id"), nullable=False
+    )
+
+    # --- Sur quel joueur on parie : clé étrangère vers players ---
+    # C'est l'un des deux joueurs du match.
+    bet_on_player_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("players.id"), nullable=False
+    )
+
+    # --- Les chiffres du pari ---
+    stake: Mapped[float] = mapped_column(Float, nullable=False)  # la mise (ex: 20.0)
+    odds: Mapped[float] = mapped_column(Float, nullable=False)   # la cote au moment du pari
+
+    # Statut du pari :
+    #   "pending" : en attente, le match n'est pas encore joué
+    #   "won"     : pari gagné
+    #   "lost"    : pari perdu
+    # Un pari créé est toujours "pending" au départ.
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+
+    # Date à laquelle le pari a été pris.
+    placed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<Bet {self.stake}@{self.odds} on player {self.bet_on_player_id} ({self.status})>"
